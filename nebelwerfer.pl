@@ -21,16 +21,27 @@
 
 #-------------------------------------------------------------------------------
 # 			Settings section
+					# Wireless interface to use
 	our $interface 		= "wlan0";
-	our $sleep 		= 10;
-	our $mon_timeout 	= 30;
+					# ESSID to attack
 	our $gEssid		= "Beeline_WiFi";
+					# List of friendly MACs that we won't
+					# touch
 	our @friendly_macs 	= qw//;
 	
+					# Sleep between live cycles
+	our $sleep 		= 10;
+					# Timeout to let airodump-ng capture 
+					# some packets
+	our $mon_timeout 	= 30;
+					# Working directory. Using "/tmp/" is
+					# recommended
 	our $workdir 		= "/tmp/";
+					# Filename prefix
 	our $fileprefix 	= "nebelwerfer";
 	
-	
+					# File pathes to the utilities
+					# Yours may be different
 	our $airmon 		= "/usr/local/sbin/airmon-ng";
 	our $airodump 		= "/usr/local/sbin/airodump-ng";
 	our $aireplay		= "/usr/local/sbin/aireplay-ng";
